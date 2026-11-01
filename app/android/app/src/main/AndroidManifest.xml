@@ -6,14 +6,13 @@
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:allowBackup="false"
-        android:hasCode="false"
         android:theme="@style/AppTheme">
         <activity
-            android:name="android.app.NativeActivity"
+            android:name=".MainActivity"
             android:exported="true"
             android:launchMode="singleTask"
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|keyboard|uiMode|density">
-            <!-- Must match the Rust library name: libfinance_app.so -->
+            <!-- NativeActivity loads this library; must match the Rust one: libfinance_app.so -->
             <meta-data
                 android:name="android.app.lib_name"
                 android:value="finance_app" />

@@ -12,5 +12,8 @@ fn main() -> Result<(), slint::PlatformError> {
             data_dir = args.next().map(PathBuf::from);
         }
     }
-    finance_app::run(data_dir.unwrap_or_else(finance_app::default_data_dir))
+    finance_app::run(
+        data_dir.unwrap_or_else(finance_app::default_data_dir),
+        |_dark| {},
+    )
 }
