@@ -84,11 +84,20 @@ One-time setup:
    ```
 
 Then open `app/android` in Android Studio and press Run (the Gradle build calls cargo-ndk for you),
-or from the command line in `app/android` (Android Studio can create the Gradle wrapper, or run
-`gradle wrapper` once):
+or from the command line in `app/android`, with `JAVA_HOME` pointing at JDK 17 or later (Android
+Studio's bundled JDK works):
 
 ```bash
 ./gradlew installDebug
+```
+
+The build always compiles the Rust code in release mode, for both `arm64-v8a` (phones) and
+`x86_64` (emulators). The libraries are aligned to 16 KB pages, as Google Play requires.
+
+Debug builds let you read or replace the app's data file over adb, which is handy for testing:
+
+```bash
+adb shell run-as com.speakinginbits.financetracker cat files/finance-tracker.json
 ```
 
 For the Play Store, build a signed app bundle with **Build → Generate Signed App Bundle** in Android
@@ -134,5 +143,7 @@ renamed to `finance-tracker.corrupt.json` rather than overwritten.
 - **Charts on touch screens:** tap a pie slice to see its name and amount in the middle of the
   donut; tap a Sankey bar to see its total.
 - **Category colors:** chosen from a palette of twelve swatches instead of a free color picker.
-- **Date picker:** follows the phone's light/dark setting even when the app's theme is overridden.
+- **Date picker and Android status bar:** follow the phone's light/dark setting even when the
+  app's theme is overridden, so on a light-mode phone with the app set to dark, the status-bar
+  icons stay dark.
 - **Budget nodes** in the Sankey chart have a solid outline instead of a dashed one.

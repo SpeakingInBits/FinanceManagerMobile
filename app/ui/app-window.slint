@@ -69,6 +69,16 @@ export component AppWindow inherits Window {
         App.window-height = self.height;
     }
 
+    // Back must reach `keys`, so take focus back whenever the field that had it may have been
+    // destroyed (closing a sheet or dialog, switching pages). Otherwise nothing has focus, the
+    // Back key goes unhandled, and Android closes the app.
+    property <int> sheet: App.sheet;
+    property <bool> dialog: App.dialog-visible;
+    property <int> page: App.page;
+    changed sheet => { keys.focus(); }
+    changed dialog => { keys.focus(); }
+    changed page => { keys.focus(); }
+
     forward-focus: keys;
     keys := FocusScope {
         // The Android back button closes the open dialog or sheet before leaving the app.
