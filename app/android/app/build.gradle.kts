@@ -1,5 +1,5 @@
-// Packages the Rust library (built by cargo-ndk) into an APK / Play Store app bundle. The app has
-// no Java/Kotlin code: Android's NativeActivity loads libfinance_app.so directly.
+// Packages the Rust library (built by cargo-ndk) into an APK / Play Store app bundle. The only
+// Java is MainActivity, a NativeActivity that loads libfinance_app.so and exposes a small hook.
 import javax.inject.Inject
 import org.gradle.process.ExecOperations
 

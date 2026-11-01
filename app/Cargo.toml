@@ -25,6 +25,8 @@ dirs = "6"
 
 [target.'cfg(target_os = "android")'.dependencies]
 slint = { version = "1.18", default-features = false, features = ["backend-android-activity-06", "renderer-femtovg"] }
+# Same version Slint uses, to call MainActivity.setLightSystemBars.
+jni = "0.22"
 
 [target.'cfg(target_os = "ios")'.dependencies]
 # Slint's iOS support goes through winit + the Skia renderer.

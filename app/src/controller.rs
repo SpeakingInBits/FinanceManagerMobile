@@ -70,8 +70,14 @@ pub struct Controller {
     state: RefCell<State>,
 }
 
-/// Wires a controller to `ui`, loading data from `data_path`.
-pub fn attach(ui: &AppWindow, data_path: PathBuf) -> Rc<Controller> {
+/// Wires a controller to `ui`, loading data from `data_path`. `on_dark_theme` is told whenever
+/// the app's effective theme turns dark (true) or light (false), and once at start-up, so the
+/// platform can match its own chrome (such as Android's status bar icons).
+pub fn attach(
+    ui: &AppWindow,
+    data_path: PathBuf,
+    on_dark_theme: impl Fn(bool) + 'static,
+) -> Rc<Controller> {
     let store = Store::open(data_path);
     let theme = match store.data.settings.theme_mode {
         ThemeMode::System => 0,
@@ -100,6 +106,8 @@ pub fn attach(ui: &AppWindow, data_path: PathBuf) -> Rc<Controller> {
     });
     c.bind(ui);
     c.refresh();
+    on_dark_theme(ui.global::<Theme>().get_dark());
+    ui.global::<App>().on_dark_theme_changed(on_dark_theme);
     c
 }
 

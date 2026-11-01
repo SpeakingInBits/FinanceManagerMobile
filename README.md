@@ -143,7 +143,5 @@ renamed to `finance-tracker.corrupt.json` rather than overwritten.
 - **Charts on touch screens:** tap a pie slice to see its name and amount in the middle of the
   donut; tap a Sankey bar to see its total.
 - **Category colors:** chosen from a palette of twelve swatches instead of a free color picker.
-- **Date picker and Android status bar:** follow the phone's light/dark setting even when the
-  app's theme is overridden, so on a light-mode phone with the app set to dark, the status-bar
-  icons stay dark.
+- **Date picker:** follows the phone's light/dark setting even when the app's theme is overridden.
 - **Budget nodes** in the Sankey chart have a solid outline instead of a dashed one.

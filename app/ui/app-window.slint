@@ -79,6 +79,9 @@ export component AppWindow inherits Window {
     changed dialog => { keys.focus(); }
     changed page => { keys.focus(); }
 
+    property <bool> dark: Theme.dark;
+    changed dark => { App.dark-theme-changed(self.dark); }
+
     forward-focus: keys;
     keys := FocusScope {
         // The Android back button closes the open dialog or sheet before leaving the app.

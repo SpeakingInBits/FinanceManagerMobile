@@ -1224,6 +1224,7 @@ dependencies = [
  "dirs",
  "finance-core",
  "indexmap",
+ "jni 0.22.4",
  "slint",
  "slint-build",
 ]
