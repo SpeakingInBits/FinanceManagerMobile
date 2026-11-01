@@ -1,0 +1,3 @@
+/target/
+*.corrupt.json
+/scratch-data/
