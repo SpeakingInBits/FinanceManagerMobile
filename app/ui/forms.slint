@@ -1,0 +1,313 @@
+// Form bodies shown in the bottom sheet. Field state lives in the App global; Rust reads it on
+// submit.
+
+import { Theme, Btn, Segmented, TextField, TextArea, Select, FieldLabel, Swatch } from "theme.slint";
+import { DateField } from "components.slint";
+import { App } from "state.slint";
+
+component FormActions inherits HorizontalLayout {
+    in property <string> submit-label;
+    in property <bool> can-submit: true;
+    callback submit();
+    spacing: Theme.space-3;
+    padding-top: Theme.space-2;
+    Btn {
+        horizontal-stretch: 1;
+        text: "Cancel";
+        secondary: true;
+        clicked => { App.close-sheet(); }
+    }
+    Btn {
+        horizontal-stretch: 1;
+        text: root.submit-label;
+        enabled: root.can-submit;
+        clicked => { root.submit(); }
+    }
+}
+
+component Hint inherits Text {
+    color: Theme.text-muted;
+    font-size: Theme.font-sm;
+    wrap: word-wrap;
+}
+
+component ErrorText inherits Text {
+    color: Theme.danger;
+    font-size: Theme.font-sm;
+    wrap: word-wrap;
+}
+
+export component TransactionForm inherits VerticalLayout {
+    // Fills and withdrawals move money between income and a budget: no category, budget required.
+    property <bool> transfer: App.tx-type == 2 || App.tx-type == 3;
+    property <[string]> subcategories: App.subcategory-options(App.tx-category);
+    spacing: Theme.space-4;
+
+    Segmented {
+        options: ["Expense", "Income", "Fill budget", "Withdraw"];
+        selected <=> App.tx-type;
+        changed => { App.tx-budget-missing = false; }
+    }
+
+    VerticalLayout {
+        spacing: Theme.space-1;
+        TextField {
+            label: "Amount";
+            prefix: "$";
+            placeholder: "0.00";
+            input-type: InputType.decimal;
+            text <=> App.tx-amount;
+        }
+        if App.tx-recurrence == 2: Hint { text: App.monthly-hint(App.tx-amount); }
+        if App.tx-split-hint != "": Hint { text: App.tx-split-hint; }
+    }
+
+    Select {
+        label: "Repeats";
+        options: ["Never (one-off)", "Monthly", "Yearly"];
+        selected <=> App.tx-recurrence;
+    }
+
+    DateField {
+        label: App.tx-recurrence == 0 ? "Date" : "Start date";
+        date <=> App.tx-date;
+    }
+
+    if !root.transfer: Select {
+        label: "Category";
+        options: App.category-options;
+        selected <=> App.tx-category;
+        changed => { App.tx-subcategory = 0; }
+    }
+
+    if !root.transfer && root.subcategories.length > 1: Select {
+        label: "Subcategory";
+        options: root.subcategories;
+        selected <=> App.tx-subcategory;
+    }
+
+    if App.tx-type != 1: VerticalLayout {
+        spacing: Theme.space-1;
+        Select {
+            label: App.tx-type == 2 ? "Fill budget" : App.tx-type == 3 ? "Withdraw from" : "Budget";
+            options: root.transfer ? App.budget-options-required : App.budget-options;
+            selected <=> App.tx-budget;
+            invalid: App.tx-budget-missing;
+            changed => { App.tx-budget-missing = false; }
+        }
+        if App.tx-budget-missing: ErrorText { text: "Select a budget."; }
+    }
+
+    TextArea {
+        label: "Note";
+        text <=> App.tx-note;
+    }
+
+    FormActions {
+        submit-label: App.tx-editing ? "Save" : "Add";
+        submit => { App.submit-transaction(); }
+    }
+}
+
+export component BudgetForm inherits VerticalLayout {
+    property <[string]> subcategories: App.subcategory-options(App.bf-category);
+    spacing: Theme.space-4;
+
+    VerticalLayout {
+        spacing: Theme.space-1;
+        TextField {
+            label: "Name";
+            text <=> App.bf-name;
+            edited => { App.bf-name-missing = false; }
+        }
+        if App.bf-name-missing: ErrorText { text: "Enter a name."; }
+    }
+
+    TextArea {
+        label: "Description (optional)";
+        text <=> App.bf-description;
+    }
+
+    TextField {
+        label: App.bf-period == 0 ? "Monthly contribution target" : "Savings goal";
+        prefix: "$";
+        placeholder: "0.00";
+        input-type: InputType.decimal;
+        text <=> App.bf-amount;
+    }
+
+    Segmented {
+        options: ["Monthly", "One-time"];
+        selected <=> App.bf-period;
+    }
+
+    DateField {
+        label: "Start date";
+        date <=> App.bf-start;
+    }
+
+    DateField {
+        label: "End date (optional)";
+        optional: true;
+        date <=> App.bf-end;
+        has-value <=> App.bf-has-end;
+    }
+
+    Select {
+        label: "Category (optional — General for a budget not tied to one)";
+        options: App.budget-category-options;
+        selected <=> App.bf-category;
+        changed => { App.bf-subcategory = 0; }
+    }
+
+    if root.subcategories.length > 1: Select {
+        label: "Subcategory";
+        options: root.subcategories;
+        selected <=> App.bf-subcategory;
+    }
+
+    FormActions {
+        submit-label: App.bf-editing ? "Save" : "Add";
+        submit => { App.submit-budget(); }
+    }
+}
+
+export component CategoryForm inherits VerticalLayout {
+    // Swatches offered for quick picking; any hex color can also be typed.
+    property <[color]> palette: [
+        #2f6fed, #1c9d6b, #d64545, #d69a1f, #8e44ad, #e67e22,
+        #16a085, #c0392b, #2c3e50, #f39c12, #7f8c8d, #e84393,
+    ];
+    spacing: Theme.space-4;
+
+    VerticalLayout {
+        spacing: Theme.space-1;
+        TextField {
+            label: "Name";
+            text <=> App.cf-name;
+            edited => { App.cf-name-missing = false; }
+        }
+        if App.cf-name-missing: ErrorText { text: "Enter a name."; }
+    }
+
+    Select {
+        label: "Parent category";
+        options: App.cf-parent-options;
+        selected <=> App.cf-parent;
+    }
+
+    VerticalLayout {
+        spacing: Theme.space-2;
+        FieldLabel { text: "Color"; }
+        for row in 2: HorizontalLayout {
+            spacing: Theme.space-2;
+            for c[i] in [0, 1, 2, 3, 4, 5]: Rectangle {
+                property <color> swatch: root.palette[row * 6 + i];
+                horizontal-stretch: 1;
+                height: 36px;
+                border-radius: Theme.radius-sm;
+                background: swatch;
+                border-width: App.cf-color == swatch ? 3px : 0px;
+                border-color: Theme.text;
+                accessible-role: button;
+                accessible-label: "Color " + (row * 6 + i + 1);
+                accessible-checked: App.cf-color == swatch;
+                TouchArea {
+                    clicked => { App.cf-color = parent.swatch; }
+                }
+            }
+        }
+        HorizontalLayout {
+            spacing: Theme.space-2;
+            Rectangle {
+                width: 36px;
+                height: 36px;
+                border-radius: Theme.radius-sm;
+                background: App.cf-color;
+                border-width: 1px;
+                border-color: Theme.border;
+            }
+            Text {
+                text: "Selected color";
+                color: Theme.text-muted;
+                font-size: Theme.font-sm;
+                vertical-alignment: center;
+            }
+        }
+    }
+
+    FormActions {
+        submit-label: App.cf-editing ? "Save" : "Add";
+        submit => { App.submit-category(); }
+    }
+}
+
+export component AllocateForm inherits VerticalLayout {
+    spacing: Theme.space-4;
+    if App.alloc-rows.length == 0: Hint { text: "Create a budget first, then fill it from here."; }
+    if App.alloc-rows.length > 0: Hint {
+        text: "Spread this month's unallocated income across your budgets. Leave a budget at $0.00 to skip it.";
+    }
+    for row[i] in App.alloc-rows: TextField {
+        label: row.name;
+        prefix: "$";
+        placeholder: "0.00";
+        input-type: InputType.decimal;
+        text: row.amount;
+        edited(text) => { App.alloc-edited(i, text); }
+    }
+    if App.alloc-rows.length > 0: Text {
+        text: App.alloc-remaining;
+        color: App.alloc-over ? Theme.danger : Theme.text-muted;
+        font-size: Theme.font-base;
+        font-weight: 600;
+    }
+    FormActions {
+        submit-label: App.alloc-rows.length > 0 ? "Allocate" : "Close";
+        can-submit: App.alloc-rows.length == 0 || App.alloc-can-submit;
+        submit => {
+            if App.alloc-rows.length == 0 {
+                App.close-sheet();
+            } else {
+                App.submit-allocate();
+            }
+        }
+    }
+}
+
+export component WithdrawForm inherits VerticalLayout {
+    spacing: Theme.space-4;
+    if App.wd-options.length == 0: Hint { text: "None of your budgets have funds to withdraw."; }
+    if App.wd-options.length > 0: Hint {
+        text: "Move money out of a budget and back into this month's income, where you can spend it or allocate it elsewhere.";
+    }
+    if App.wd-options.length > 0: Select {
+        label: "Withdraw from";
+        options: App.wd-options;
+        selected <=> App.wd-index;
+    }
+    if App.wd-options.length > 0: TextField {
+        label: "Amount";
+        prefix: "$";
+        placeholder: "0.00";
+        input-type: InputType.decimal;
+        text <=> App.wd-amount;
+    }
+    if App.wd-options.length > 0: Text {
+        text: App.wd-status(App.wd-index, App.wd-amount);
+        color: App.wd-valid(App.wd-index, App.wd-amount) || App.wd-amount == "" ? Theme.text-muted : Theme.danger;
+        font-size: Theme.font-base;
+        font-weight: 600;
+    }
+    FormActions {
+        submit-label: App.wd-options.length > 0 ? "Withdraw" : "Close";
+        can-submit: App.wd-options.length == 0 || App.wd-valid(App.wd-index, App.wd-amount);
+        submit => {
+            if App.wd-options.length == 0 {
+                App.close-sheet();
+            } else {
+                App.submit-withdraw();
+            }
+        }
+    }
+}

@@ -1,0 +1,263 @@
+// App shell: top bar, current page, bottom navigation, bottom sheet and dialogs.
+
+import { Theme, Icons, Icon, IconBtn, Btn } from "theme.slint";
+import { DashboardView, TransactionsView, CategoriesView, BudgetsView, ChartsView } from "views.slint";
+import { TransactionForm, BudgetForm, CategoryForm, AllocateForm, WithdrawForm } from "forms.slint";
+import { App } from "state.slint";
+
+export { App, Theme }
+
+component NavTab inherits Rectangle {
+    in property <string> label;
+    in property <string> icon;
+    in property <int> page;
+    property <bool> active: App.page == page;
+    horizontal-stretch: 1;
+    accessible-role: tab;
+    accessible-label: label;
+    accessible-checked: active;
+    VerticalLayout {
+        alignment: center;
+        spacing: 2px;
+        HorizontalLayout {
+            alignment: center;
+            Icon {
+                icon: root.icon;
+                color: root.active ? Theme.primary : Theme.text-muted;
+                width: 22px;
+                height: 22px;
+            }
+        }
+        Text {
+            text: root.label;
+            color: root.active ? Theme.primary : Theme.text-muted;
+            font-size: 11px;
+            font-weight: root.active ? 600 : 400;
+            horizontal-alignment: center;
+            overflow: elide;
+        }
+    }
+    TouchArea {
+        clicked => {
+            App.page = root.page;
+            App.page-changed(root.page);
+        }
+    }
+}
+
+export component AppWindow inherits Window {
+    title: "Finance Tracker";
+    icon: @image-url("../assets/icon-192.png");
+    preferred-width: 420px;
+    preferred-height: 860px;
+    min-width: 320px;
+    min-height: 480px;
+    background: Theme.bg;
+    default-font-size: 16px;
+
+    property <length> inset-top: self.safe-area-insets.top;
+    property <length> inset-bottom: self.safe-area-insets.bottom;
+    property <length> inset-left: self.safe-area-insets.left;
+    property <length> inset-right: self.safe-area-insets.right;
+    property <length> keyboard: self.virtual-keyboard-size.height;
+    property <[string]> titles: ["Dashboard", "Transactions", "Categories", "Budgets", "Charts"];
+
+    changed width => { App.window-width = self.width; }
+    changed height => { App.window-height = self.height; }
+    init => {
+        App.window-width = self.width;
+        App.window-height = self.height;
+    }
+
+    forward-focus: keys;
+    keys := FocusScope {
+        // The Android back button closes the open dialog or sheet before leaving the app.
+        key-pressed(event) => {
+            if event.text == Key.Back || event.text == Key.Escape {
+                if App.dialog-visible {
+                    App.dialog-cancelled();
+                    return accept;
+                }
+                if App.sheet != 0 {
+                    App.close-sheet();
+                    return accept;
+                }
+            }
+            reject
+        }
+
+        VerticalLayout {
+            padding-left: root.inset-left;
+            padding-right: root.inset-right;
+
+            // Top bar
+            Rectangle {
+                height: 56px + root.inset-top;
+                background: Theme.surface;
+                Rectangle {
+                    y: parent.height - 1px;
+                    height: 1px;
+                    background: Theme.border;
+                }
+                HorizontalLayout {
+                    padding-top: root.inset-top;
+                    padding-left: Theme.space-4;
+                    padding-right: Theme.space-2;
+                    spacing: Theme.space-2;
+                    Text {
+                        text: root.titles[App.page];
+                        color: Theme.text;
+                        font-size: Theme.font-lg;
+                        font-weight: 600;
+                        vertical-alignment: center;
+                        horizontal-stretch: 1;
+                        overflow: elide;
+                        accessible-role: text;
+                    }
+                    if App.page == 1 || App.page == 2 || App.page == 3: Btn {
+                        y: (parent.height - root.inset-top - self.height) / 2 + root.inset-top;
+                        height: 38px;
+                        text: "Add";
+                        icon: Icons.plus;
+                        clicked => {
+                            if App.page == 1 { App.add-transaction(); }
+                            if App.page == 2 { App.add-category(); }
+                            if App.page == 3 { App.add-budget(); }
+                        }
+                    }
+                    IconBtn {
+                        y: (parent.height - root.inset-top - self.height) / 2 + root.inset-top;
+                        icon: Theme.mode == 0 ? Icons.auto : Theme.mode == 1 ? Icons.sun : Icons.moon;
+                        label: Theme.mode == 0 ? "Theme: system" : Theme.mode == 1 ? "Theme: light" : "Theme: dark";
+                        icon-color: Theme.text;
+                        clicked => { App.cycle-theme(); }
+                    }
+                }
+            }
+
+            // Current page
+            Rectangle {
+                vertical-stretch: 1;
+                if App.page == 0: DashboardView { }
+                if App.page == 1: TransactionsView { }
+                if App.page == 2: CategoriesView { }
+                if App.page == 3: BudgetsView { }
+                if App.page == 4: ChartsView { }
+            }
+
+            // Bottom navigation
+            Rectangle {
+                height: 60px + root.inset-bottom;
+                background: Theme.surface;
+                Rectangle {
+                    y: 0;
+                    height: 1px;
+                    background: Theme.border;
+                }
+                HorizontalLayout {
+                    padding-bottom: root.inset-bottom;
+                    NavTab { label: "Dashboard"; icon: Icons.home; page: 0; }
+                    NavTab { label: "Transactions"; icon: Icons.list; page: 1; }
+                    NavTab { label: "Categories"; icon: Icons.tag; page: 2; }
+                    NavTab { label: "Budgets"; icon: Icons.wallet; page: 3; }
+                    NavTab { label: "Charts"; icon: Icons.chart; page: 4; }
+                }
+            }
+        }
+
+        // Bottom sheet for forms
+        if App.sheet != 0: Rectangle {
+            background: Theme.overlay;
+            TouchArea {
+                clicked => { App.close-sheet(); }
+            }
+            sheet := Rectangle {
+                property <length> max-h: root.height - root.inset-top - 24px;
+                width: min(root.width, 560px);
+                x: (root.width - self.width) / 2;
+                height: min(self.max-h, header.preferred-height + body.content-height + root.inset-bottom + root.keyboard);
+                y: root.height - self.height;
+                background: Theme.surface-raised;
+                border-top-left-radius: 20px;
+                border-top-right-radius: 20px;
+                // Swallow taps so they don't reach the overlay's close handler.
+                TouchArea { }
+                VerticalLayout {
+                    padding-bottom: max(root.inset-bottom, root.keyboard);
+                    header := HorizontalLayout {
+                        padding-left: Theme.space-4;
+                        padding-right: Theme.space-2;
+                        padding-top: Theme.space-2;
+                        height: 56px;
+                        Text {
+                            text: App.sheet-title;
+                            color: Theme.text;
+                            font-size: Theme.font-md;
+                            font-weight: 600;
+                            vertical-alignment: center;
+                            horizontal-stretch: 1;
+                        }
+                        IconBtn {
+                            icon: Icons.close;
+                            label: "Close";
+                            clicked => { App.close-sheet(); }
+                        }
+                    }
+                    body := Flickable {
+                        vertical-stretch: 1;
+                        content-height: form.preferred-height;
+                        content-width: self.width;
+                        form := VerticalLayout {
+                            width: body.width;
+                            padding: Theme.space-4;
+                            padding-top: Theme.space-1;
+                            if App.sheet == 1: TransactionForm { }
+                            if App.sheet == 2: BudgetForm { }
+                            if App.sheet == 3: CategoryForm { }
+                            if App.sheet == 4: AllocateForm { }
+                            if App.sheet == 5: WithdrawForm { }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Confirm / alert dialog
+        if App.dialog-visible: Rectangle {
+            background: Theme.overlay;
+            TouchArea { }
+            Rectangle {
+                width: min(root.width - 48px, 360px);
+                height: dialog-layout.preferred-height;
+                background: Theme.surface-raised;
+                border-radius: Theme.radius-md;
+                drop-shadow-blur: 16px;
+                drop-shadow-color: #00000040;
+                dialog-layout := VerticalLayout {
+                    padding: Theme.space-5;
+                    spacing: Theme.space-5;
+                    Text {
+                        text: App.dialog-message;
+                        color: Theme.text;
+                        font-size: Theme.font-base;
+                        wrap: word-wrap;
+                    }
+                    HorizontalLayout {
+                        spacing: Theme.space-3;
+                        alignment: end;
+                        if App.dialog-can-cancel: Btn {
+                            text: "Cancel";
+                            secondary: true;
+                            clicked => { App.dialog-cancelled(); }
+                        }
+                        Btn {
+                            text: App.dialog-confirm-label;
+                            danger: App.dialog-can-cancel;
+                            clicked => { App.dialog-confirmed(); }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

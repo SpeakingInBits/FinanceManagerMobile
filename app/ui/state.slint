@@ -1,0 +1,229 @@
+// View models and the global the Rust side reads, writes and handles callbacks on.
+
+import { Date } from "std-widgets.slint";
+export { Date }
+
+export struct Stat {
+    label: string,
+    value: string,
+}
+
+export struct BudgetCardData {
+    id: string,
+    name: string,
+    meta: string,
+    // Progress bar fill, 0..1.
+    fill: float,
+    // 0 = normal, 1 = nearing the goal (85-99%), 2 = overdrawn one-time budget.
+    state: int,
+    amount-label: string,
+    goal-label: string,
+    // Empty when the card has no lifetime-balance line.
+    balance-label: string,
+    balance-over: bool,
+}
+
+export struct PieSlice {
+    path: string,
+    color: color,
+    heading: string,
+    value: string,
+}
+
+export struct LegendEntry {
+    label: string,
+    color: color,
+    child: bool,
+}
+
+export struct PieData {
+    // Identifies the chart to the hit-test callback.
+    id: int,
+    slices: [PieSlice],
+    legend: [LegendEntry],
+}
+
+export struct SankeyNodeView {
+    x: float,
+    y: float,
+    w: float,
+    h: float,
+    color: color,
+    budget: bool,
+    label: string,
+    // True when the label sits left of the node (right half of the chart).
+    label-left: bool,
+    detail: string,
+}
+
+export struct SankeyLinkView {
+    path: string,
+    color: color,
+}
+
+// One row of the flattened, grouped transaction list.
+export struct TxRow {
+    // 0 = Recurring / One-time section, 1 = category header, 2 = subcategory header, 3 = transaction.
+    kind: int,
+    id: string,
+    title: string,
+    color: color,
+    meta: string,
+    budget-line: string,
+    amount: string,
+    // 0 = income or withdrawal, 1 = expense, 2 = allocation.
+    amount-kind: int,
+}
+
+// One row of the flattened category tree.
+export struct CategoryRow {
+    id: string,
+    name: string,
+    color: color,
+    depth: int,
+    has-children: bool,
+    collapsed: bool,
+    can-up: bool,
+    can-down: bool,
+}
+
+export struct AllocRow {
+    name: string,
+    amount: string,
+}
+
+export global App {
+    // Navigation: 0 = Dashboard, 1 = Transactions, 2 = Categories, 3 = Budgets, 4 = Charts.
+    in-out property <int> page: 0;
+    in property <string> month-label;
+    in property <bool> can-next-month;
+    callback prev-month();
+    callback next-month();
+    callback cycle-theme();
+    callback page-changed(int);
+
+    // Window metrics, kept current by the window so popups can center themselves.
+    in-out property <length> window-width;
+    in-out property <length> window-height;
+
+    // Dashboard
+    in property <[Stat]> stats;
+    in property <bool> can-allocate;
+    in property <bool> can-withdraw;
+    in property <PieData> expense-pie;
+    in property <PieData> recurring-pie;
+    in property <PieData> onetime-pie;
+    in property <string> recurring-total;
+    in property <string> onetime-total;
+    in-out property <int> breakdown-view: 0;
+    callback open-allocate();
+    callback open-withdraw();
+
+    // Budgets (dashboard and Budgets page)
+    in property <[BudgetCardData]> budget-cards;
+    callback add-budget();
+    callback edit-budget(string);
+    callback delete-budget(string);
+
+    // Transactions
+    in property <[TxRow]> tx-rows;
+    callback add-transaction();
+    callback edit-transaction(string);
+    callback delete-transaction(string);
+
+    // Categories
+    in property <[CategoryRow]> category-rows;
+    callback add-category();
+    callback add-subcategory(string);
+    callback edit-category(string);
+    callback delete-category(string);
+    callback move-category(string, bool);
+    callback toggle-category(string);
+
+    // Charts
+    in-out property <int> pie-type: 0;
+    callback pie-type-changed(int);
+    in property <PieData> charts-pie;
+    in property <[SankeyNodeView]> sankey-nodes;
+    in property <[SankeyLinkView]> sankey-links;
+    callback sankey-resized(float);
+    pure callback pie-hit(int, float, float) -> int;
+
+    // Bottom sheet: 0 = closed, 1 = transaction, 2 = budget, 3 = category, 4 = allocate,
+    // 5 = withdraw.
+    in-out property <int> sheet: 0;
+    in property <string> sheet-title;
+    callback close-sheet();
+    pure callback format-date(Date) -> string;
+    in property <Date> today;
+
+    // Transaction form. Type: 0 = expense, 1 = income, 2 = fill budget, 3 = withdraw.
+    in-out property <int> tx-type;
+    in-out property <string> tx-amount;
+    // 0 = never, 1 = monthly, 2 = yearly.
+    in-out property <int> tx-recurrence;
+    in-out property <Date> tx-date;
+    in-out property <int> tx-category;
+    in-out property <int> tx-subcategory;
+    in-out property <int> tx-budget;
+    in-out property <string> tx-note;
+    in property <string> tx-split-hint;
+    in property <bool> tx-editing;
+    in-out property <bool> tx-budget-missing;
+    in property <[string]> category-options;
+    in property <[string]> budget-options;
+    // Budget options for fills and withdrawals, where picking one is required.
+    in property <[string]> budget-options-required;
+    pure callback subcategory-options(int) -> [string];
+    pure callback monthly-hint(string) -> string;
+    callback submit-transaction();
+
+    // Budget form. Period: 0 = monthly, 1 = one-time.
+    in-out property <string> bf-name;
+    in-out property <string> bf-description;
+    in-out property <string> bf-amount;
+    in-out property <int> bf-period;
+    in-out property <Date> bf-start;
+    in-out property <Date> bf-end;
+    in-out property <bool> bf-has-end;
+    in-out property <int> bf-category;
+    in-out property <int> bf-subcategory;
+    // Like category-options, but index 0 reads "General".
+    in property <[string]> budget-category-options;
+    in property <bool> bf-editing;
+    in-out property <bool> bf-name-missing;
+    callback submit-budget();
+
+    // Category form.
+    in-out property <string> cf-name;
+    in-out property <int> cf-parent;
+    in-out property <color> cf-color;
+    in property <[string]> cf-parent-options;
+    in property <bool> cf-editing;
+    in-out property <bool> cf-name-missing;
+    callback submit-category();
+
+    // Allocate remaining funds.
+    in property <[AllocRow]> alloc-rows;
+    in property <string> alloc-remaining;
+    in property <bool> alloc-over;
+    in property <bool> alloc-can-submit;
+    callback alloc-edited(int, string);
+    callback submit-allocate();
+
+    // Withdraw from a budget.
+    in property <[string]> wd-options;
+    in-out property <int> wd-index;
+    in-out property <string> wd-amount;
+    pure callback wd-status(int, string) -> string;
+    pure callback wd-valid(int, string) -> bool;
+    callback submit-withdraw();
+
+    // Confirm / alert dialog.
+    in property <bool> dialog-visible;
+    in property <string> dialog-message;
+    in property <string> dialog-confirm-label;
+    in property <bool> dialog-can-cancel;
+    callback dialog-confirmed();
+    callback dialog-cancelled();
+}

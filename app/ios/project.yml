@@ -1,0 +1,47 @@
+# XcodeGen spec: run `xcodegen` in this folder on a Mac to create FinanceTracker.xcodeproj.
+# Xcode only packages and signs the app; cargo builds the binary (see build_for_ios_with_cargo.bash).
+name: FinanceTracker
+options:
+  bundleIdPrefix: com.speakinginbits
+settings:
+  ENABLE_USER_SCRIPT_SANDBOXING: NO
+targets:
+  FinanceTracker:
+    type: application
+    platform: iOS
+    deploymentTarget: "15.0"
+    settings:
+      PRODUCT_BUNDLE_IDENTIFIER: com.speakinginbits.financetracker
+      MARKETING_VERSION: "0.1.0"
+      CURRENT_PROJECT_VERSION: "1"
+      ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+      TARGETED_DEVICE_FAMILY: "1,2"
+    info:
+      path: Info.plist
+      properties:
+        CFBundleDisplayName: Finance Tracker
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        ITSAppUsesNonExemptEncryption: false
+        CADisableMinimumFrameDurationOnPhone: true
+        UILaunchScreen:
+          - ImageRespectSafeAreaInsets: false
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
+          UISceneConfigurations:
+            UIWindowSceneSessionRoleApplication:
+              - UISceneConfigurationName: Slint
+                UISceneDelegateClassName: SlintWindowSceneDelegate
+    sources:
+      - path: Assets.xcassets
+    postCompileScripts:
+      - script: |
+          ./build_for_ios_with_cargo.bash finance-tracker
+        name: Build Rust app with cargo
+        outputFileLists:
+          $TARGET_BUILD_DIR/$EXECUTABLE_PATH
