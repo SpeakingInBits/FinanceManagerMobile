@@ -1,0 +1,321 @@
+// Composite widgets shared by several screens.
+
+import { DatePickerPopup } from "std-widgets.slint";
+import { Theme, Icons, Icon, IconBtn, Swatch, FieldLabel } from "theme.slint";
+import { App, Date, PieData, BudgetCardData, SankeyNodeView, SankeyLinkView } from "state.slint";
+
+// Prev/next control for browsing by month; can't go past the current month.
+export component MonthNav inherits HorizontalLayout {
+    alignment: center;
+    spacing: Theme.space-2;
+    IconBtn {
+        icon: Icons.chevron-left;
+        label: "Previous month";
+        icon-color: Theme.text;
+        clicked => { App.prev-month(); }
+    }
+    Text {
+        text: App.month-label;
+        min-width: 150px;
+        font-size: Theme.font-md;
+        font-weight: 600;
+        color: Theme.text;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+    IconBtn {
+        icon: Icons.chevron-right;
+        label: "Next month";
+        icon-color: Theme.text;
+        enabled: App.can-next-month;
+        clicked => { App.next-month(); }
+    }
+}
+
+// Exploded donut with a tap-to-inspect center readout and a static legend below.
+export component PieChart inherits VerticalLayout {
+    in property <PieData> data;
+    property <int> selected: -1;
+    changed data => { selected = -1; }
+    spacing: Theme.space-3;
+
+    Rectangle {
+        height: 240px;
+        if root.data.slices.length == 0: Text {
+            text: "No data yet";
+            color: Theme.text-muted;
+            font-size: Theme.font-base;
+        }
+        square := Rectangle {
+            width: min(parent.width, parent.height);
+            height: self.width;
+            for slice in root.data.slices: Path {
+                width: 100%;
+                height: 100%;
+                viewbox-x: 0;
+                viewbox-y: 0;
+                viewbox-width: 300;
+                viewbox-height: 300;
+                commands: slice.path;
+                fill: slice.color;
+                stroke: Theme.surface;
+                stroke-width: 2px;
+            }
+            if root.selected >= 0 && root.selected < root.data.slices.length: VerticalLayout {
+                alignment: center;
+                width: square.width * 0.45;
+                x: (square.width - self.width) / 2;
+                Text {
+                    text: root.data.slices[root.selected].heading;
+                    color: Theme.text;
+                    font-size: Theme.font-sm;
+                    font-weight: 600;
+                    horizontal-alignment: center;
+                    wrap: word-wrap;
+                }
+                Text {
+                    text: root.data.slices[root.selected].value;
+                    color: Theme.text-muted;
+                    font-size: Theme.font-sm;
+                    horizontal-alignment: center;
+                    wrap: word-wrap;
+                }
+            }
+            TouchArea {
+                clicked => {
+                    root.selected = App.pie-hit(
+                        root.data.id,
+                        self.pressed-x / self.width * 300,
+                        self.pressed-y / self.height * 300);
+                }
+            }
+        }
+    }
+
+    for entry in root.data.legend: HorizontalLayout {
+        padding-left: entry.child ? 22px : 0px;
+        spacing: Theme.space-2;
+        Swatch {
+            y: (parent.height - self.height) / 2;
+            swatch: entry.color;
+            width: entry.child ? 10px : 12px;
+            height: self.width;
+        }
+        Text {
+            text: entry.label;
+            color: entry.child ? Theme.text-muted : Theme.text;
+            font-size: Theme.font-sm;
+            font-weight: entry.child ? 400 : 600;
+            wrap: word-wrap;
+            horizontal-stretch: 1;
+        }
+    }
+}
+
+// Cash-flow Sankey; Rust lays it out for the current width.
+export component SankeyChart inherits VerticalLayout {
+    property <int> selected: -1;
+    changed width => { App.sankey-resized(self.width / 1px); }
+    init => { App.sankey-resized(self.width / 1px); }
+    spacing: Theme.space-2;
+
+    area := Rectangle {
+        height: 320px;
+        if App.sankey-links.length == 0: Text {
+            text: "No data yet";
+            color: Theme.text-muted;
+            font-size: Theme.font-base;
+        }
+        for link in App.sankey-links: Path {
+            x: 0;
+            y: 0;
+            width: area.width;
+            height: area.height;
+            viewbox-x: 0;
+            viewbox-y: 0;
+            viewbox-width: area.width / 1px;
+            viewbox-height: area.height / 1px;
+            commands: link.path;
+            fill: link.color.with-alpha(0.4);
+        }
+        for node[i] in App.sankey-nodes: Rectangle {
+            x: node.x * 1px;
+            y: node.y * 1px;
+            width: node.w * 1px;
+            height: max(1px, node.h * 1px);
+            background: node.color;
+            border-radius: node.budget ? 4px : 0px;
+            border-width: node.budget || i == root.selected ? 1.5px : 0px;
+            border-color: Theme.text;
+            TouchArea {
+                x: -8px;
+                width: parent.width + 16px;
+                clicked => { root.selected = root.selected == i ? -1 : i; }
+            }
+        }
+        for node[i] in App.sankey-nodes: Text {
+            x: node.label-left ? node.x * 1px - 6px - self.width : (node.x + node.w) * 1px + 6px;
+            y: (node.y + node.h / 2) * 1px - self.height / 2;
+            text: node.label;
+            color: Theme.text;
+            font-size: 12px;
+            font-weight: i == root.selected ? 700 : 400;
+        }
+    }
+    Text {
+        text: root.selected >= 0 && root.selected < App.sankey-nodes.length
+            ? App.sankey-nodes[root.selected].detail
+            : (App.sankey-links.length > 0 ? "Tap a bar for its total." : "");
+        color: Theme.text-muted;
+        font-size: Theme.font-sm;
+        wrap: word-wrap;
+    }
+}
+
+export component ProgressBar inherits Rectangle {
+    in property <float> fill;
+    in property <int> state;
+    height: 10px;
+    border-radius: 5px;
+    background: Theme.bg;
+    clip: true;
+    Rectangle {
+        x: 0;
+        width: parent.width * clamp(root.fill, 0, 1);
+        height: 100%;
+        border-radius: 5px;
+        background: root.state == 2 ? Theme.danger : root.state == 1 ? Theme.warning : Theme.income;
+        animate width { duration: 200ms; easing: ease; }
+    }
+}
+
+export component BudgetCard inherits Rectangle {
+    in property <BudgetCardData> data;
+    background: Theme.surface;
+    border-color: Theme.border;
+    border-width: 1px;
+    border-radius: Theme.radius-md;
+    VerticalLayout {
+        padding: Theme.space-3;
+        padding-left: Theme.space-4;
+        spacing: Theme.space-2;
+        HorizontalLayout {
+            spacing: Theme.space-2;
+            VerticalLayout {
+                horizontal-stretch: 1;
+                alignment: center;
+                Text {
+                    text: root.data.name;
+                    color: Theme.text;
+                    font-size: Theme.font-base;
+                    font-weight: 600;
+                    overflow: elide;
+                }
+                Text {
+                    text: root.data.meta;
+                    color: Theme.text-muted;
+                    font-size: Theme.font-sm;
+                    overflow: elide;
+                }
+            }
+            IconBtn {
+                icon: Icons.edit;
+                label: "Edit budget";
+                clicked => { App.edit-budget(root.data.id); }
+            }
+            IconBtn {
+                icon: Icons.trash;
+                label: "Delete budget";
+                clicked => { App.delete-budget(root.data.id); }
+            }
+        }
+        ProgressBar {
+            fill: root.data.fill;
+            state: root.data.state;
+        }
+        HorizontalLayout {
+            Text {
+                text: root.data.amount-label;
+                color: Theme.text-muted;
+                font-size: Theme.font-sm;
+                horizontal-stretch: 1;
+            }
+            Text {
+                text: root.data.goal-label;
+                color: Theme.text-muted;
+                font-size: Theme.font-sm;
+            }
+        }
+        if root.data.balance-label != "": Text {
+            text: root.data.balance-label;
+            color: root.data.balance-over ? Theme.danger : Theme.text-muted;
+            font-size: Theme.font-sm;
+            font-weight: root.data.balance-over ? 600 : 400;
+        }
+    }
+}
+
+// Tappable date field backed by the platform-neutral date picker popup.
+export component DateField inherits VerticalLayout {
+    in property <string> label;
+    in-out property <Date> date;
+    // Optional dates can be cleared; `has-value` false shows "Not set".
+    in property <bool> optional;
+    in-out property <bool> has-value: true;
+    spacing: Theme.space-1;
+    FieldLabel { text: root.label; }
+    field := Rectangle {
+        height: Theme.tap;
+        border-radius: Theme.radius-sm;
+        border-width: 1px;
+        border-color: Theme.border;
+        background: Theme.surface;
+        accessible-role: button;
+        accessible-label: root.label;
+        accessible-value: root.has-value ? App.format-date(root.date) : "Not set";
+        HorizontalLayout {
+            padding-left: Theme.space-3;
+            padding-right: Theme.space-1;
+            spacing: Theme.space-2;
+            Text {
+                text: root.has-value ? App.format-date(root.date) : "Not set";
+                color: root.has-value ? Theme.text : Theme.text-muted;
+                font-size: Theme.font-base;
+                vertical-alignment: center;
+                horizontal-stretch: 1;
+            }
+            if root.optional && root.has-value: IconBtn {
+                icon: Icons.close;
+                label: "Clear " + root.label;
+                width: 36px;
+                clicked => { root.has-value = false; }
+            }
+            Icon {
+                y: (parent.height - self.height) / 2;
+                icon: Icons.calendar;
+                color: Theme.text-muted;
+                width: 18px;
+                height: 18px;
+            }
+            Rectangle { width: Theme.space-2; }
+        }
+        TouchArea {
+            // Leave the clear button tappable.
+            width: root.optional && root.has-value ? parent.width - 72px : parent.width;
+            x: 0;
+            clicked => { picker.show(); }
+        }
+        picker := DatePickerPopup {
+            x: (App.window-width - self.width) / 2 - field.absolute-position.x;
+            y: max(0px, (App.window-height - self.height) / 2) - field.absolute-position.y;
+            title: root.label;
+            date: root.has-value ? root.date : App.today;
+            accepted(d) => {
+                root.date = d;
+                root.has-value = true;
+                self.close();
+            }
+            canceled => { self.close(); }
+        }
+    }
+}
