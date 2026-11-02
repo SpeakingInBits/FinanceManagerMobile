@@ -308,6 +308,19 @@ export component Select inherits VerticalLayout {
         accessible-role: combobox;
         accessible-label: root.label;
         accessible-value: root.options[root.selected];
+        // Lets screen readers (and the UI tests) step through the options without the popup.
+        accessible-action-increment => {
+            if root.selected < root.options.length - 1 {
+                root.selected += 1;
+                root.changed(root.selected);
+            }
+        }
+        accessible-action-decrement => {
+            if root.selected > 0 {
+                root.selected -= 1;
+                root.changed(root.selected);
+            }
+        }
         HorizontalLayout {
             padding-left: Theme.space-3;
             padding-right: Theme.space-2;

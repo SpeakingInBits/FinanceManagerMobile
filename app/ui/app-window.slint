@@ -236,7 +236,7 @@ export component AppWindow inherits Window {
         if App.dialog-visible: Rectangle {
             background: Theme.overlay;
             TouchArea { }
-            Rectangle {
+            dialog-box := Rectangle {
                 width: min(root.width - 48px, 360px);
                 height: dialog-layout.preferred-height;
                 background: Theme.surface-raised;

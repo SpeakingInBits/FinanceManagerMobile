@@ -1,0 +1,250 @@
+name: Release
+
+# Run from the Actions tab: builds the Android and iOS app packages and publishes a GitHub release with them.
+on:
+  workflow_dispatch:
+    inputs:
+      change:
+        description: What's in this release (picks the next version number)
+        type: choice
+        options:
+          - Bug fixes
+          - New features
+          - Breaking changes
+        default: Bug fixes
+      version:
+        description: Version number, e.g. 1.0.0 (optional; overrides the calculated one)
+        type: string
+        required: false
+  # Pull requests that change the packaging build every package without releasing, so problems show up before a release.
+  pull_request:
+    branches: [main]
+    paths:
+      - packaging/**
+      - app/android/**
+      - app/ios/**
+      - .github/workflows/release.yml
+
+permissions:
+  contents: read
+
+# Two releases at once could pick the same version number.
+concurrency:
+  group: release-${{ github.event_name }}
+
+jobs:
+  version:
+    name: version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.next.outputs.version }}
+    steps:
+      - name: Only release from main
+        if: github.event_name == 'workflow_dispatch' && github.ref != 'refs/heads/main'
+        run: |
+          echo "::error::Releases are made from main. Choose main in 'Use workflow from'."
+          exit 1
+
+      - uses: actions/checkout@v5
+        with:
+          # The tags are needed to find the latest release.
+          fetch-depth: 0
+
+      - name: Next version
+        id: next
+        env:
+          # Pull requests have no inputs.
+          CHANGE: ${{ inputs.change || 'Bug fixes' }}
+          REQUESTED: ${{ inputs.version }}
+        run: |
+          version=$(bash packaging/next-version.sh "$CHANGE" "$REQUESTED")
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "Releasing v$version" >> "$GITHUB_STEP_SUMMARY"
+
+  # Formatting, clippy, and the unit and UI tests. Pull requests get these from the CI workflow.
+  checks:
+    name: checks
+    if: github.event_name == 'workflow_dispatch'
+    uses: ./.github/workflows/ci.yml
+
+  android:
+    name: android
+    needs: version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      # Gradle and the Android Gradle plugin need JDK 17 or later.
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android,x86_64-linux-android
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install cargo-ndk
+        run: cargo install cargo-ndk --locked
+
+      # The runner has the SDK; make sure it has the platform the app compiles against (compileSdk in app/build.gradle.kts).
+      - name: Install the Android SDK platform
+        run: '"$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36"'
+
+      - uses: gradle/actions/setup-gradle@v5
+
+      # Signs with the Play upload key from the repository secrets. Without them, the packages are unsigned.
+      - name: Set up signing
+        id: signing
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            keystore="$RUNNER_TEMP/release.jks"
+            echo "$KEYSTORE_BASE64" | base64 --decode > "$keystore"
+            echo "ANDROID_KEYSTORE_FILE=$keystore" >> "$GITHUB_ENV"
+            echo "signed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::No ANDROID_KEYSTORE_BASE64 secret, so the Android packages are unsigned. Android won't install them until they're signed."
+            echo "signed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build the APK and app bundle
+        working-directory: app/android
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+          SIGNED: ${{ steps.signing.outputs.signed }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD || secrets.ANDROID_KEYSTORE_PASSWORD }}
+        run: |
+          export ANDROID_NDK_HOME="$ANDROID_NDK_LATEST_HOME"
+          # Android's version code is a whole number that has to go up with every release.
+          IFS=. read -r major minor patch <<< "$VERSION"
+          code=$((10#$major * 1000000 + 10#$minor * 1000 + 10#$patch))
+          ./gradlew assembleRelease bundleRelease -PappVersionName="$VERSION" -PappVersionCode="$code"
+          mkdir -p "$GITHUB_WORKSPACE/dist"
+          if [ "$SIGNED" = true ]; then
+            cp app/build/outputs/apk/release/app-release.apk "$GITHUB_WORKSPACE/dist/FinanceTracker.apk"
+            cp app/build/outputs/bundle/release/app-release.aab "$GITHUB_WORKSPACE/dist/FinanceTracker.aab"
+          else
+            cp app/build/outputs/apk/release/app-release-unsigned.apk "$GITHUB_WORKSPACE/dist/FinanceTracker-unsigned.apk"
+            cp app/build/outputs/bundle/release/app-release.aab "$GITHUB_WORKSPACE/dist/FinanceTracker-unsigned.aab"
+          fi
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: packages-android
+          path: dist/*
+          if-no-files-found: error
+
+  # Installs the APK just built on an emulator and checks the app opens without crashing, which
+  # catches a package that builds but doesn't run (a missing library, a crash on start-up).
+  android-smoke-test:
+    name: android-smoke-test
+    needs: android
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: packages-android
+          path: dist
+
+      # Lets the emulator use hardware acceleration.
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      # Android won't install an unsigned APK, so sign a copy with a key made for this test. The copy isn't released.
+      - name: Prepare the APK
+        run: |
+          apk=$(ls dist/*.apk)
+          if [[ $apk == *-unsigned.apk ]]; then
+            build_tools=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -n 1)
+            keytool -genkeypair -keystore "$RUNNER_TEMP/smoke-test.jks" -storepass smoketest -alias smoketest \
+              -keyalg RSA -keysize 2048 -validity 1 -dname "CN=Finance Tracker smoke test"
+            "$build_tools/apksigner" sign --ks "$RUNNER_TEMP/smoke-test.jks" --ks-pass pass:smoketest \
+              --out "$RUNNER_TEMP/app.apk" "$apk"
+          else
+            cp "$apk" "$RUNNER_TEMP/app.apk"
+          fi
+
+      - name: Open the app on an emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 36
+          arch: x86_64
+          target: google_apis
+          script: bash packaging/android-smoke-test.sh "$RUNNER_TEMP/app.apk" android-smoke-test.png
+
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: android-smoke-test-screenshot
+          path: android-smoke-test.png
+          if-no-files-found: ignore
+
+  ios:
+    name: ios
+    needs: version
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-ios
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      # Unsigned: signing needs an Apple Developer account's certificate and provisioning profile.
+      - name: Build the app
+        working-directory: app/ios
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          xcodegen
+          xcodebuild archive -project FinanceTracker.xcodeproj -scheme FinanceTracker -configuration Release \
+            -destination 'generic/platform=iOS' -archivePath build/FinanceTracker.xcarchive \
+            MARKETING_VERSION="$VERSION" CURRENT_PROJECT_VERSION="$VERSION" CODE_SIGNING_ALLOWED=NO
+          # An .ipa is the .app in a Payload folder, zipped.
+          mkdir -p build/Payload "$GITHUB_WORKSPACE/dist"
+          cp -R build/FinanceTracker.xcarchive/Products/Applications/FinanceTracker.app build/Payload/
+          (cd build && zip -qry "$GITHUB_WORKSPACE/dist/FinanceTracker-unsigned.ipa" Payload)
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: packages-ios
+          path: dist/*
+          if-no-files-found: error
+
+  release:
+    name: release
+    needs: [version, checks, android, android-smoke-test, ios]
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: packages-*
+          merge-multiple: true
+          path: dist
+
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          # The install instructions come first, then GitHub's list of changes since the last release.
+          gh release create "v$VERSION" dist/* --target "$GITHUB_SHA" --title "v$VERSION" --notes-file packaging/release-notes.md --generate-notes

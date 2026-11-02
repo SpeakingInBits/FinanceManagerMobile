@@ -11,6 +11,14 @@ val rustAbis = listOf("arm64-v8a", "x86_64")
 val minSdkVersion = 26
 val compileSdkVersion = 36
 
+// The release workflow passes the release's version; local builds use these.
+val appVersionName = providers.gradleProperty("appVersionName").getOrElse("0.1.0")
+val appVersionCode = providers.gradleProperty("appVersionCode").map { it.toInt() }.getOrElse(1)
+
+// The release workflow signs with the key in these environment variables. Without them, release
+// builds are unsigned.
+val releaseKeystore = providers.environmentVariable("ANDROID_KEYSTORE_FILE")
+
 android {
     namespace = "com.speakinginbits.financetracker"
     compileSdk = compileSdkVersion
@@ -20,14 +28,26 @@ android {
         // API 26 (Android 8.0) is the minimum Slint's Android backend supports.
         minSdk = minSdkVersion
         targetSdk = compileSdkVersion
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = appVersionCode
+        versionName = appVersionName
         ndk { abiFilters += rustAbis }
+    }
+
+    signingConfigs {
+        if (releaseKeystore.isPresent) {
+            create("release") {
+                storeFile = file(releaseKeystore.get())
+                storePassword = providers.environmentVariable("ANDROID_KEYSTORE_PASSWORD").get()
+                keyAlias = providers.environmentVariable("ANDROID_KEY_ALIAS").get()
+                keyPassword = providers.environmentVariable("ANDROID_KEY_PASSWORD").get()
+            }
+        }
     }
 
     buildTypes {
         release {
             isMinifyEnabled = false
+            signingConfig = signingConfigs.findByName("release")
         }
     }
 }

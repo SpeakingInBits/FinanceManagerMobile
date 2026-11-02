@@ -61,6 +61,18 @@ cargo test --workspace
 cargo clippy --workspace --all-targets
 ```
 
+The tests include UI tests (`app/src/ui_tests.rs`) that run the real UI without a window, using
+Slint's testing backend: they tap buttons and type into fields by their accessible labels and check
+what's on screen. Give new controls an `accessible-label` so tests (and screen readers) can find
+them. The **CI** workflow runs formatting, clippy and the tests on every pull request.
+
+To check the app opens on an emulator or a phone connected with `adb` (bash, from the repository
+root):
+
+```bash
+bash packaging/android-smoke-test.sh app/android/app/build/outputs/apk/debug/app-debug.apk smoke-test.png
+```
+
 The UI uses the Slint language; the [Slint VS Code extension](https://marketplace.visualstudio.com/items?itemName=Slint.slint)
 gives live preview of `.slint` files.
 
@@ -125,6 +137,37 @@ and run on a simulator or device. Xcode runs `build_for_ios_with_cargo.bash`, wh
 `finance-tracker` binary with cargo. For the App Store, use **Product → Archive**.
 
 The bundle id is `com.speakinginbits.financetracker` (set in `app/ios/project.yml`).
+
+## Releases
+
+Run the **Release** workflow from the repository's **Actions** tab (**Run workflow**, from `main`).
+Choose what the release contains (bug fixes, new features or breaking changes) and it picks the next
+version number from the latest `vX.Y.Z` tag, or type a version to use instead. It builds the Android
+APK and app bundle and an iOS `.ipa` (always unsigned for now), then publishes a GitHub release with them and the
+install instructions in `packaging/release-notes.md`. Before publishing, it runs the CI checks and
+opens the new APK on an Android emulator to check it starts without crashing (the screenshot is
+saved with the run); if either fails, nothing is released. Pull requests that change the Android or
+iOS projects, `packaging/` or the workflow build and smoke-test the packages without releasing.
+
+The Android packages are signed with the Play upload key from these repository secrets:
+
+| Secret | Value |
+| --- | --- |
+| `ANDROID_KEYSTORE_BASE64` | The keystore file, base64-encoded |
+| `ANDROID_KEYSTORE_PASSWORD` | The keystore's password |
+| `ANDROID_KEY_ALIAS` | The key's alias |
+| `ANDROID_KEY_PASSWORD` | The key's password (leave unset if it's the keystore's password) |
+
+Without them the Android packages are unsigned and named `FinanceTracker-unsigned.apk` and
+`FinanceTracker-unsigned.aab`; Android won't install them until they're signed. Keep the keystore
+somewhere safe: Android only installs updates signed with the same key.
+
+To make a keystore and copy it base64-encoded (PowerShell):
+
+```powershell
+keytool -genkeypair -keystore upload.jks -alias upload -keyalg RSA -keysize 2048 -validity 10000
+[Convert]::ToBase64String([IO.File]::ReadAllBytes("upload.jks")) | Set-Clipboard
+```
 
 ## Your data
 

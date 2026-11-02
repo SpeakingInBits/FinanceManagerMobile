@@ -10,6 +10,8 @@ targets:
     type: application
     platform: iOS
     deploymentTarget: "15.0"
+    # A shared scheme, so xcodebuild can archive the app in the release workflow.
+    scheme: {}
     settings:
       PRODUCT_BUNDLE_IDENTIFIER: com.speakinginbits.financetracker
       MARKETING_VERSION: "0.1.0"

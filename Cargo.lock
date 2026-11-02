@@ -1223,9 +1223,11 @@ version = "0.1.0"
 dependencies = [
  "dirs",
  "finance-core",
+ "i-slint-backend-testing",
  "indexmap",
  "slint",
  "slint-build",
+ "tempfile",
 ]
 
 [[package]]
