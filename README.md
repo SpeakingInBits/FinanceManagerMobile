@@ -126,6 +126,35 @@ and run on a simulator or device. Xcode runs `build_for_ios_with_cargo.bash`, wh
 
 The bundle id is `com.speakinginbits.financetracker` (set in `app/ios/project.yml`).
 
+## Releases
+
+Run the **Release** workflow from the repository's **Actions** tab (**Run workflow**, from `main`).
+Choose what the release contains (bug fixes, new features or breaking changes) and it picks the next
+version number from the latest `vX.Y.Z` tag, or type a version to use instead. It builds the Android
+APK and app bundle and an iOS `.ipa` (always unsigned for now), then publishes a GitHub release with them and the
+install instructions in `packaging/release-notes.md`. Pull requests that change the Android or iOS
+projects, `packaging/` or the workflow build the packages without releasing.
+
+The Android packages are signed with the Play upload key from these repository secrets:
+
+| Secret | Value |
+| --- | --- |
+| `ANDROID_KEYSTORE_BASE64` | The keystore file, base64-encoded |
+| `ANDROID_KEYSTORE_PASSWORD` | The keystore's password |
+| `ANDROID_KEY_ALIAS` | The key's alias |
+| `ANDROID_KEY_PASSWORD` | The key's password (leave unset if it's the keystore's password) |
+
+Without them the Android packages are unsigned and named `FinanceTracker-unsigned.apk` and
+`FinanceTracker-unsigned.aab`; Android won't install them until they're signed. Keep the keystore
+somewhere safe: Android only installs updates signed with the same key.
+
+To make a keystore and copy it base64-encoded (PowerShell):
+
+```powershell
+keytool -genkeypair -keystore upload.jks -alias upload -keyalg RSA -keysize 2048 -validity 10000
+[Convert]::ToBase64String([IO.File]::ReadAllBytes("upload.jks")) | Set-Clipboard
+```
+
 ## Your data
 
 Data is stored in a single file, `finance-tracker.json`, in the app's private storage: internal
