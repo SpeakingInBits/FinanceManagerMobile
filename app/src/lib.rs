@@ -1,6 +1,8 @@
 //! Finance Tracker app: a Slint UI over `finance-core`, for iOS, Android and desktop.
 
 mod controller;
+#[cfg(test)]
+mod ui_tests;
 mod viewmodel;
 
 use std::path::PathBuf;

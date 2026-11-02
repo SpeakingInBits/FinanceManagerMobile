@@ -61,6 +61,12 @@ jobs:
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "Releasing v$version" >> "$GITHUB_STEP_SUMMARY"
 
+  # Formatting, clippy, and the unit and UI tests. Pull requests get these from the CI workflow.
+  checks:
+    name: checks
+    if: github.event_name == 'workflow_dispatch'
+    uses: ./.github/workflows/ci.yml
+
   android:
     name: android
     needs: version
@@ -134,6 +140,56 @@ jobs:
           path: dist/*
           if-no-files-found: error
 
+  # Installs the APK just built on an emulator and checks the app opens without crashing, which
+  # catches a package that builds but doesn't run (a missing library, a crash on start-up).
+  android-smoke-test:
+    name: android-smoke-test
+    needs: android
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: packages-android
+          path: dist
+
+      # Lets the emulator use hardware acceleration.
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      # Android won't install an unsigned APK, so sign a copy with a key made for this test. The copy isn't released.
+      - name: Prepare the APK
+        run: |
+          apk=$(ls dist/*.apk)
+          if [[ $apk == *-unsigned.apk ]]; then
+            build_tools=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -n 1)
+            keytool -genkeypair -keystore "$RUNNER_TEMP/smoke-test.jks" -storepass smoketest -alias smoketest \
+              -keyalg RSA -keysize 2048 -validity 1 -dname "CN=Finance Tracker smoke test"
+            "$build_tools/apksigner" sign --ks "$RUNNER_TEMP/smoke-test.jks" --ks-pass pass:smoketest \
+              --out "$RUNNER_TEMP/app.apk" "$apk"
+          else
+            cp "$apk" "$RUNNER_TEMP/app.apk"
+          fi
+
+      - name: Open the app on an emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 36
+          arch: x86_64
+          target: google_apis
+          script: bash packaging/android-smoke-test.sh "$RUNNER_TEMP/app.apk" android-smoke-test.png
+
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: android-smoke-test-screenshot
+          path: android-smoke-test.png
+          if-no-files-found: ignore
+
   ios:
     name: ios
     needs: version
@@ -171,7 +227,7 @@ jobs:
 
   release:
     name: release
-    needs: [version, android, ios]
+    needs: [version, checks, android, android-smoke-test, ios]
     if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     permissions:

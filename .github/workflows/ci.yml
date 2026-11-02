@@ -1,0 +1,40 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  # The Release workflow runs these checks before it publishes anything.
+  workflow_call:
+
+permissions:
+  contents: read
+
+# The job name below is the status check name to mark as required in branch protection.
+jobs:
+  test:
+    name: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - uses: Swatinem/rust-cache@v2
+
+      # Slint's desktop backend, which the tests build, links against these.
+      - name: Install system libraries
+        run: sudo apt-get update && sudo apt-get install -y libfontconfig-dev libxkbcommon-dev
+
+      - name: Formatting
+        run: cargo fmt --all --check
+
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      # Includes the UI tests in app/src/ui_tests.rs, which run the real UI without a window.
+      - name: Tests
+        run: cargo test --workspace

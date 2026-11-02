@@ -30,5 +30,10 @@ slint = { version = "1.18", default-features = false, features = ["backend-andro
 # Slint's iOS support goes through winit + the Skia renderer.
 slint = { version = "1.18", default-features = false, features = ["backend-winit", "renderer-skia"] }
 
+[dev-dependencies]
+# Runs the real UI without a window for the UI tests in src/ui_tests.rs.
+i-slint-backend-testing = "=1.18.1"
+tempfile = "3"
+
 [build-dependencies]
 slint-build = "1.18"
